@@ -11,3 +11,5 @@ $ g++ -std=c++20 -o UploadServer main.cpp UploadServer.cpp UploadServerThread.cp
 
 Then type this in cygwin to start the server.
 $ ./UploadServer
+
+Go to localhost:8082 in a browser to upload a file.
