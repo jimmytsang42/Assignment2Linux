@@ -55,12 +55,6 @@ void UploadServerThread::run() {
 
     HttpServlet* servlet = nullptr;
 
-    // if (path == "/fileuploadservlet") {
-    //     servlet = new UploadServlet();
-    // } else {
-    //     servlet = new HttpServlet();
-    // }
-
     servlet = new UploadServlet();
 
     if (method == "POST") {
