@@ -18,7 +18,7 @@ void UploadServlet::doGet(HttpServletRequest& request, HttpServletResponse& resp
         <form method='post' enctype='multipart/form-data'>
             Caption: <input type='text' name='caption'/><br/><br/>
             Date: <input type='date' name='date' /><br/>
-            <input type='file' name='fileName'/><br/><br/>
+            <input type='file' name='file'/><br/><br/>
             <input type='submit' value='Submit' />
         </form>
         </body>
@@ -31,8 +31,16 @@ void UploadServlet::doPost(HttpServletRequest& request, HttpServletResponse& res
     std::cout << "UploadServlet: doPost method invoked" << std::endl;
 
     try {
-        std::string body = request.getBody();
-        std::cout << "UploadServlet Body received: " << body << std::endl;
+        std::vector<char> body = request.getBody();
+        std::cout << "UploadServlet Body received: " << std::endl;
+        for (char c : body) {
+            if (std::isprint(c)) {
+                std::cout << c;
+            } else {
+                std::cout << "\\" << std::hex << (int)(unsigned char)c;
+            }
+        }
+        std::cout << std::endl;
 
         // Get boundary from Content-Type header
         std::string contentType = request.getHeader("Content-Type");
@@ -55,25 +63,50 @@ void UploadServlet::doPost(HttpServletRequest& request, HttpServletResponse& res
             for (const std::string& header : headers) {
                 if (header.find("Content-Disposition") != std::string::npos) {
                     if (header.find("name=\"caption\"") != std::string::npos) {
-                        caption = content;
+                        caption = std::string(content.begin(), content.end());
                     } else if (header.find("name=\"date\"") != std::string::npos) {
-                        date = content;
-                    } else if (header.find("filename=\"") != std::string::npos) {
-                        fileName = content;
+                        date = std::string(content.begin(), content.end());
+                    } else if (header.find("name=\"file\"") != std::string::npos) {
+                        size_t filenameStart = header.find("filename=\"");
+                        if (filenameStart != std::string::npos) {
+                            filenameStart += 10;
+                            size_t filenameEnd = header.find("\"", filenameStart);
+                            if (filenameEnd != std::string::npos) {
+                                fileName = header.substr(filenameStart, filenameEnd - filenameStart);
+                            }
+                        }
                         fileContent.assign(content.begin(), content.end());
                     }
                 }
             }
         }
 
+        // just for debugging
+        std::cout << "Captured caption: " << caption << std::endl;
+        std::cout << "Captured date: " << date << std::endl;
+        std::cout << "Captured filename: " << fileName << std::endl;
+        std::cout << "File content size: " << fileContent.size() << std::endl;
+
         // Ensure the 'files' directory exists
         std::filesystem::create_directory("files");
 
         // Construct the new filename and save file
         std::string newFileName = caption + "_" + date + "_" + fileName;
-        std::ofstream outFile("files/" + newFileName, std::ios::binary);
+        std::string filePath = "files/" + newFileName;
+
+        // add counter to filename if already exists
+        int counter = 1;
+        while (std::filesystem::exists(filePath)) {
+            filePath = "files/" + caption + "_" + date + "_" + std::to_string(counter++) + "_" + fileName;
+        }
+
+        std::ofstream outFile(filePath, std::ios::binary);
+        if (!outFile) {
+            std::cerr << "Error opening file for writing" << std::endl;
+            response.writeResponse("Error uploading file.");
+            return;
+        }
         outFile.write(fileContent.data(), fileContent.size());
-        std::cout << "UploadServlet: File saved as " << newFileName << std::endl;
 
         // Generate a sorted listing of the files
         std::vector<std::string> fileNames;
@@ -90,7 +123,10 @@ void UploadServlet::doPost(HttpServletRequest& request, HttpServletResponse& res
         for (const std::string& name : fileNames) {
             htmlResponse << "<li>" << name << "</li>";
         }
-        htmlResponse << "</ul></body></html>";
+        htmlResponse << "</ul>";
+        htmlResponse << "<p>File uploaded successfully</p>";
+        htmlResponse << "<a href='/'>Back to upload</a>";
+        htmlResponse << "</body></html>";
 
         response.setContentType("text/html");
         response.writeResponse(htmlResponse.str());
@@ -101,34 +137,55 @@ void UploadServlet::doPost(HttpServletRequest& request, HttpServletResponse& res
 }
 
 // Helper function to split the multipart body by boundary
-std::vector<std::string> UploadServlet::splitMultipart(const std::string& body, const std::string& boundary) {
+std::vector<std::string> UploadServlet::splitMultipart(const std::vector<char>& body, const std::string& boundary) {
     std::vector<std::string> parts;
-    size_t start = 0;
-    while ((start = body.find(boundary, start)) != std::string::npos) {
-        size_t end = body.find(boundary, start + boundary.length());
-        if (end == std::string::npos) break;
-        parts.push_back(body.substr(start + boundary.length(), end - start - boundary.length()));
-        start = end;
+    std::string bodyStr(body.begin(), body.end());
+    size_t start = 0, end;
+
+    while ((end = bodyStr.find("\r\n" + boundary, start)) != std::string::npos) {
+        parts.emplace_back(bodyStr.substr(start, end - start));
+        start = end + 2 + boundary.length();
     }
+
+    if (start < bodyStr.size()) {
+        std::string lastPart = bodyStr.substr(start);
+        if (lastPart.find("--") != 0) {
+            parts.emplace_back(lastPart);
+        }
+    }
+
     return parts;
 }
 
 // Helper function to parse headers and content from a multipart part
-std::pair<std::vector<std::string>, std::string> UploadServlet::parseHeadersAndContent(const std::string& part) {
-    std::vector<std::string> headers;
-    std::string content;
-
+std::pair<std::vector<std::string>, std::vector<char>> UploadServlet::parseHeadersAndContent(const std::string& part) {
     size_t headerEnd = part.find("\r\n\r\n");
     if (headerEnd == std::string::npos) return {};
 
-    headers.push_back(part.substr(0, headerEnd));
-    content = part.substr(headerEnd + 4); // Skip the "\r\n\r\n"
+    std::string headersPart = part.substr(0, headerEnd);
+    std::vector<std::string> headers;
+    std::istringstream headerStream(headersPart);
+    std::string line;
+    while (std::getline(headerStream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        headers.push_back(line);
+    }
+
+    std::vector<char> content(part.begin() + headerEnd + 4, part.end());
+
+    std::string contentStr(content.begin(), content.end());
+    size_t boundaryPos = contentStr.find("\r\n--");
+    if (boundaryPos != std::string::npos) {
+        content.erase(content.begin() + boundaryPos, content.end());
+    }
 
     return {headers, content};
 }
 
 // Function to split a string by a delimiter
-std::vector<std::string> UploadServlet:: customsplit(const std::string& str, char delimiter) {
+std::vector<std::string> UploadServlet::customsplit(const std::string& str, char delimiter) {
     std::vector<std::string> tokens;
     std::string token;
     std::istringstream tokenStream(str);
