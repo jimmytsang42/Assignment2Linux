@@ -47,7 +47,6 @@ void UploadServerThread::run() {
         while (totalBytesRead < contentLength) {
             ssize_t bytesRead = read(socket, &body[totalBytesRead], contentLength - totalBytesRead);
             if (bytesRead < 0) {
-                std::cerr << "Error reading body from socket" << std::endl;
                 return; // abort
             }
             totalBytesRead += bytesRead;
