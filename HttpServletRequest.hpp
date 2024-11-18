@@ -9,15 +9,16 @@
 
 class HttpServletRequest {
 public:
-    HttpServletRequest(std::istream& inputStream, const std::map<std::string, std::string>& headers, const std::string& body);
+    HttpServletRequest(std::istream& inputStream, const std::map<std::string, std::string>& headers, const std::vector<char>& body)
+        : inputStream(inputStream), headers(headers), body(body) {}
     std::string getHeader(const std::string& headerName);
-    std::string getBody();
+    std::vector<char> getBody() const;
     std::istream& getInputStream();
 
 private:
     std::istream& inputStream;
     std::map<std::string, std::string> headers;
-    std::string body;
+    std::vector<char> body;
 };
 
 #endif
