@@ -9,7 +9,7 @@ Install cygwin https://www.cygwin.com/
 In cygwin type: cd /cygdrive/path/to/tomcat/webapps/assignment2linux
 
 Then in cygwin, type this command to compile the files.
-$ g++ -std=c++20 -o UploadServer main.cpp UploadServer.cpp UploadServerThread.cpp UploadServlet.cpp HttpServletRequest.cpp HttpServletResponse.cpp HttpServlet.cpp
+$ g++ -std=c++20 -o UploadServer *.cpp
 
 Then type this in cygwin to start the server.
 $ ./UploadServer
