@@ -39,14 +39,19 @@ void UploadServerThread::run() {
         }
     }
 
-    std::string body;
+    std::vector<char> body;
     if (method == "POST" && headers.find("Content-Length") != headers.end()) {
         size_t contentLength = std::stoi(headers["Content-Length"]);
-        char* bodyBuffer = new char[contentLength + 1];
-        read(socket, bodyBuffer, contentLength);
-        bodyBuffer[contentLength] = '\0';
-        body = bodyBuffer;
-        delete[] bodyBuffer;
+        body.resize(contentLength);
+        ssize_t totalBytesRead = 0;
+        while (totalBytesRead < contentLength) {
+            ssize_t bytesRead = read(socket, &body[totalBytesRead], contentLength - totalBytesRead);
+            if (bytesRead < 0) {
+                std::cerr << "Error reading body from socket" << std::endl;
+                return; // abort
+            }
+            totalBytesRead += bytesRead;
+        }
     }
 
     HttpServletRequest requestObj(std::cin, headers, body);
